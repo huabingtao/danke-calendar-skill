@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-generate_reminder.py - 每日玩法倒计时与打卡提醒文章自动生成工具
+generate_reminder.py - 每日玩法待办与倒计时日历文章自动生成工具
 专为《弹壳特攻队》自媒体打造，100%严格依据后台/数据中心返回的实际规则与备注生成极简清单。
 输出路径规范: project/danke-creator/my-articles-md/提醒/YY.M.D/YY.M.D.md
 """
@@ -150,7 +150,7 @@ RECOMMENDED_ARTICLES_POOL = [
 
 
 def build_reminder_article(data: dict) -> str:
-    """严格基于后台数据组装极简清单 Markdown 文章，往期推荐使用 Frontmatter recommendations 元数据"""
+    """严格基于后台数据组装极简日历清单 Markdown 文章，往期推荐使用 Frontmatter recommendations 元数据"""
     import random
     date_str = data.get("date", datetime.date.today().strftime("%Y-%m-%d"))
     dt = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -168,13 +168,14 @@ def build_reminder_article(data: dict) -> str:
 
     lines = []
     lines.append("---")
-    lines.append(f'title: "【每日提醒】{month}月{day}日全玩法倒计时与打卡清单"')
-    lines.append(f'social_title: "{month}月{day}日全玩法打卡提醒"')
-    lines.append(f'summary: "{month}月{day}日《弹壳特攻队》全量{count}大玩法倒计时与打卡提醒汇总。"')
+    lines.append(f'title: "【弹壳日历】{month}月{day}日每日事项清单"')
+    lines.append(f'social_title: "{month}月{day}日弹壳每日事项清单"')
+    lines.append(f'summary: "{month}月{day}日《弹壳特攻队》全量{count}大玩法待办与倒计时清单汇总。"')
     lines.append("tags:")
     lines.append("  - 弹壳特攻队")
     lines.append("  - 游戏攻略")
-    lines.append("  - 每日提醒")
+    lines.append("  - 弹壳日历")
+    lines.append("  - 每日待办")
     lines.append('cover: "./cover.png"')
     lines.append('cover_vertical: "./cover_vertical.png"')
     lines.append('author: "弹壳呱呱"')
@@ -189,11 +190,11 @@ def build_reminder_article(data: dict) -> str:
     lines.append("")
     lines.append("![article-top](img://article-top){type=banner}")
     lines.append("")
-    lines.append(f"# 🔔 {month} 月 {day} 日全玩法倒计时与打卡提醒")
+    lines.append(f"# 📅 {month} 月 {day} 日弹壳每日事项清单")
     lines.append("")
     lines.append("各位特工大家早上好，我是呱呱！")
     lines.append("")
-    lines.append(f"今天（{month} 月 {day} 日）游戏内各玩法的最新倒计时与打卡提醒如下：")
+    lines.append(f"今天（{month} 月 {day} 日）游戏内各玩法的最新待办与事项提醒如下：")
     lines.append("")
 
     for idx, item in enumerate(items, 1):
@@ -241,7 +242,7 @@ def generate_covers(out_dir: Path):
                 sys.executable,
                 str(make_cover_script),
                 "-i", str(bg_img),
-                "-t", "弹壳特攻队\n今日提醒",
+                "-t", "弹壳特攻队\n每日日历",
                 "-o", str(out_dir / "cover.png"),
                 "--style", "horizontal",
             ]
@@ -252,7 +253,7 @@ def generate_covers(out_dir: Path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="自动生成《弹壳特攻队》每日玩法提醒文章")
+    parser = argparse.ArgumentParser(description="自动生成《弹壳特攻队》每日玩法待办与倒计时日历文章")
     parser.add_argument("--date", help="指定生成日期 (YYYY-MM-DD)，默认为当天", default=datetime.date.today().strftime("%Y-%m-%d"))
     parser.add_argument("--api-base", help="danke-core API 地址", default="http://localhost:3000")
     parser.add_argument("--output-dir", help="自定义输出目录")
@@ -291,7 +292,7 @@ def main():
     # 自动宏标注
     auto_tag_file(out_file)
 
-    print(f"🎉 【{short_date} ({target_date_str}) 每日提醒极简打卡文章生成完毕】！")
+    print(f"🎉 【{short_date} ({target_date_str}) 弹壳日历事项清单生成完毕】！")
 
 
 if __name__ == "__main__":
