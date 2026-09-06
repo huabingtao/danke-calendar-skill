@@ -10,6 +10,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.request
@@ -26,11 +27,22 @@ def find_workspace_root() -> Path:
 
 
 def to_short_date_str(date_obj: datetime.date) -> str:
-    """将日期转换为短格式字符串，例如 2026-09-05 -> 26.9.5"""
+    """将日期转换为短格式字符串，例如 2026-09-07 -> 26.9.7"""
     yy = date_obj.year % 100
     m = date_obj.month
     d = date_obj.day
     return f"{yy}.{m}.{d}"
+
+
+def clean_status_text(status_text: str, name: str) -> str:
+    """去除状态文案中冗余的【玩法名称】，避免前缀已有名称时重复显得呆板"""
+    if not status_text:
+        return ""
+    cleaned = status_text.replace(f"【{name}】", "").replace(f"[{name}]", "").replace(f"本轮{name}", "本轮")
+    # 清理多余空格与遗留冒号
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    cleaned = cleaned.lstrip("：: ")
+    return cleaned
 
 
 def fetch_daily_digest(target_date: str, api_base: str = "http://localhost:3000") -> dict:
@@ -84,7 +96,7 @@ def compute_from_sqlite(target_date_str: str) -> dict:
             if day_in_cycle < duration_days:
                 days_left = duration_days - day_in_cycle
                 is_first = (day_in_cycle == 0)
-                status_text = f"离本轮【{name}】结束还剩 {days_left} 天"
+                status_text = f"离本轮结束还剩 {days_left} 天"
                 if digest_tmpl:
                     status_text = digest_tmpl.replace("{name}", name).replace("{days}", str(days_left))
                 
@@ -100,7 +112,7 @@ def compute_from_sqlite(target_date_str: str) -> dict:
                     "fullText": full_text,
                 })
             elif has_redeem and day_in_cycle == duration_days:
-                status_text = f"今日是【{name}】专属兑换日，请尽快兑换！"
+                status_text = "今日是专属兑换日，请尽快兑换！"
                 if redeem_tmpl:
                     status_text = redeem_tmpl.replace("{name}", name).replace("{days}", "0")
                 full_text = f"{status_text}（{digest_note}）" if digest_note else status_text
@@ -154,6 +166,7 @@ def build_reminder_article(data: dict) -> str:
     import random
     date_str = data.get("date", datetime.date.today().strftime("%Y-%m-%d"))
     dt = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+    yy = dt.year % 100
     month = dt.month
     day = dt.day
 
@@ -168,9 +181,9 @@ def build_reminder_article(data: dict) -> str:
 
     lines = []
     lines.append("---")
-    lines.append(f'title: "【弹壳日历】{month}月{day}日每日事项清单"')
-    lines.append(f'social_title: "{month}月{day}日弹壳每日事项清单"')
-    lines.append(f'summary: "{month}月{day}日《弹壳特攻队》全量{count}大玩法待办与倒计时清单汇总。"')
+    lines.append(f'title: "【弹壳日历】{yy}年{month}月{day}日每日事项清单"')
+    lines.append(f'social_title: "{yy}年{month}月{day}日弹壳每日事项清单"')
+    lines.append(f'summary: "{yy}年{month}月{day}日《弹壳特攻队》全量{count}大玩法待办与倒计时清单汇总。"')
     lines.append("tags:")
     lines.append("  - 弹壳特攻队")
     lines.append("  - 游戏攻略")
@@ -190,16 +203,17 @@ def build_reminder_article(data: dict) -> str:
     lines.append("")
     lines.append("![article-top](img://article-top){type=banner}")
     lines.append("")
-    lines.append(f"# 📅 {month} 月 {day} 日弹壳每日事项清单")
+    lines.append(f"# 📅 {yy} 年 {month} 月 {day} 日弹壳每日事项清单")
     lines.append("")
     lines.append("各位特工大家早上好，我是呱呱！")
     lines.append("")
-    lines.append(f"今天（{month} 月 {day} 日）游戏内各玩法的最新待办与事项提醒如下：")
+    lines.append(f"今天（{yy} 年 {month} 月 {day} 日）游戏内各玩法的最新待办与事项提醒如下：")
     lines.append("")
 
     for idx, item in enumerate(items, 1):
         name = item.get("name", "")
-        status_text = item.get("statusText", "")
+        raw_status_text = item.get("statusText", "")
+        status_text = clean_status_text(raw_status_text, name)
         note = item.get("digestNote")
         
         # 单行展示：序号 + 玩法名称 + 状态文案（备注）
