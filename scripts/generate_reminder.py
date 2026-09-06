@@ -161,6 +161,24 @@ RECOMMENDED_ARTICLES_POOL = [
 ]
 
 
+def highlight_urgent_status(status_text: str, days_remaining: int, is_redeem_day: bool = False) -> str:
+    """把倒计时 3 天内的天数/兑换日标记为醒目的红色"""
+    if is_redeem_day:
+        return f'<strong><font color="#dc2626">{status_text}</font></strong>'
+    
+    if days_remaining <= 3:
+        # Match "还剩 X 天" or "剩 X 天" and insert clean spacing
+        highlighted = re.sub(
+            r'(还剩\s*\d+\s*天|剩\s*\d+\s*天)',
+            r' <strong><font color="#dc2626">\1</font></strong>',
+            status_text
+        )
+        highlighted = re.sub(r'\s+', ' ', highlighted).strip()
+        return highlighted
+    
+    return status_text
+
+
 def build_reminder_article(data: dict) -> str:
     """严格基于后台数据组装极简日历清单 Markdown 文章，往期推荐使用 Frontmatter recommendations 元数据"""
     import random
@@ -213,7 +231,11 @@ def build_reminder_article(data: dict) -> str:
     for idx, item in enumerate(items, 1):
         name = item.get("name", "")
         raw_status_text = item.get("statusText", "")
+        days_remaining = item.get("daysRemaining", 9999)
+        is_redeem_day = item.get("isRedeemDay", False)
+        
         status_text = clean_status_text(raw_status_text, name)
+        status_text = highlight_urgent_status(status_text, days_remaining, is_redeem_day)
         note = item.get("digestNote")
         
         # 单行展示：序号 + 玩法名称 + 状态文案（备注）
