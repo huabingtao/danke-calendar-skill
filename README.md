@@ -1,4 +1,4 @@
-# danke-daily-reminder-skill 📅
+# danke-calendar-skill 📅
 
 专为《弹壳特攻队》自媒体运营打造的**每日玩法待办与倒计时日历**内容创作 Skill。
 全自动对接数据中心（`danke-mcp-server` / `danke-core`），动态计算当天全部活动规则状态，按统一规范生成客观、真实、无 AI 编造内容的极简每日待办日历初稿。

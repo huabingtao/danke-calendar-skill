@@ -46,91 +46,26 @@ def clean_status_text(status_text: str, name: str) -> str:
 
 
 def fetch_daily_digest(target_date: str, api_base: str = "http://localhost:3000") -> dict:
-    """从 danke-core API 获取指定日期的提醒聚合数据"""
-    url = f"{api_base}/reminders/daily-digest?date={target_date}"
-    req = urllib.request.Request(url, headers={"User-Agent": "danke-daily-reminder-skill/1.0"})
+    """只接受 danke-core 规则引擎的结果；服务失败时停止生成。"""
+    url = f"{api_base.rstrip('/')}/reminders/daily-digest?date={target_date}"
+    req = urllib.request.Request(url, headers={"User-Agent": "danke-calendar-skill/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=10) as response:
-            if response.status == 200:
-                data = json.loads(response.read().decode("utf-8"))
-                return data
-    except Exception as e:
-        print(f"⚠️ 无法从 API ({url}) 获取提醒数据: {e}")
-        print("🔄 尝试直接连接本地 SQLite 数据库进行计算...")
-        return compute_from_sqlite(target_date)
-
-    return {"date": target_date, "totalActiveItems": 0, "items": []}
+            data = json.loads(response.read().decode("utf-8"))
+        return validate_digest(data, target_date)
+    except Exception as exc:
+        raise RuntimeError("规则服务不可用或返回无效数据；请启动 danke-core，或用 --digest-file 传入 MCP 查询结果。") from exc
 
 
-def compute_from_sqlite(target_date_str: str) -> dict:
-    """本地 SQLite 兜底计算纯函数"""
-    try:
-        import sqlite3
-        ws = find_workspace_root()
-        db_path = ws / "project" / "danke-core" / "data" / "danke.db"
-        if not db_path.exists():
-            return {"date": target_date_str, "items": []}
-
-        conn = sqlite3.connect(str(db_path))
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, name, category, ruleType, startDate, durationDays, cycleDays, hasRedeemDay, digestNote, digestTemplate, redeemTemplate, enabled FROM ReminderRule WHERE enabled = 1")
-        rows = cursor.fetchall()
-        conn.close()
-
-        target_date = datetime.datetime.strptime(target_date_str, "%Y-%m-%d").date()
-        items = []
-
-        for row in rows:
-            (rule_id, name, cat, rule_type, start_date_str, duration_days, cycle_days, has_redeem, digest_note, digest_tmpl, redeem_tmpl, enabled) = row
-            if not start_date_str or not duration_days:
-                continue
-
-            start_date = datetime.datetime.fromisoformat(start_date_str.replace("Z", "+00:00")).date()
-            diff_days = (target_date - start_date).days
-            if diff_days < 0:
-                continue
-
-            cycle = cycle_days or duration_days
-            day_in_cycle = diff_days % cycle
-
-            if day_in_cycle < duration_days:
-                days_left = duration_days - day_in_cycle
-                is_first = (day_in_cycle == 0)
-                status_text = f"离本轮结束还剩 {days_left} 天"
-                if digest_tmpl:
-                    status_text = digest_tmpl.replace("{name}", name).replace("{days}", str(days_left))
-                
-                full_text = f"{status_text}（{digest_note}）" if digest_note else status_text
-                items.append({
-                    "id": rule_id,
-                    "name": name,
-                    "daysRemaining": days_left,
-                    "isFirstDay": is_first,
-                    "isRedeemDay": False,
-                    "statusText": status_text,
-                    "digestNote": digest_note,
-                    "fullText": full_text,
-                })
-            elif has_redeem and day_in_cycle == duration_days:
-                status_text = "今日是专属兑换日，请尽快兑换！"
-                if redeem_tmpl:
-                    status_text = redeem_tmpl.replace("{name}", name).replace("{days}", "0")
-                full_text = f"{status_text}（{digest_note}）" if digest_note else status_text
-                items.append({
-                    "id": rule_id,
-                    "name": name,
-                    "daysRemaining": 0,
-                    "isFirstDay": False,
-                    "isRedeemDay": True,
-                    "statusText": status_text,
-                    "digestNote": digest_note,
-                    "fullText": full_text,
-                })
-
-        return {"date": target_date_str, "totalActiveItems": len(items), "items": items}
-    except Exception as e:
-        print(f"❌ SQLite 兜底计算失败: {e}")
-        return {"date": target_date_str, "items": []}
+def validate_digest(data: dict, target_date: str) -> dict:
+    if not isinstance(data, dict) or data.get("date") != target_date:
+        raise ValueError("规则结果日期必须与 --date 一致")
+    if not isinstance(data.get("items"), list):
+        raise ValueError("规则结果必须包含 items 数组")
+    for item in data["items"]:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str) or not isinstance(item.get("statusText"), str):
+            raise ValueError("规则项目必须包含名称和状态文案")
+    return data
 
 
 RECOMMENDED_ARTICLES_POOL = [
@@ -164,13 +99,13 @@ RECOMMENDED_ARTICLES_POOL = [
 def highlight_urgent_status(status_text: str, days_remaining: int, is_redeem_day: bool = False) -> str:
     """把倒计时 3 天内的天数/兑换日标记为醒目的红色"""
     if is_redeem_day:
-        return f'<strong><font color="#dc2626">{status_text}</font></strong>'
+        return f'<font color="#dc2626">{status_text}</font>'
     
     if days_remaining <= 3:
         # Match "还剩 X 天" or "剩 X 天" and insert clean spacing
         highlighted = re.sub(
             r'(还剩\s*\d+\s*天|剩\s*\d+\s*天)',
-            r' <strong><font color="#dc2626">\1</font></strong>',
+            r' <font color="#dc2626">\1</font>',
             status_text
         )
         highlighted = re.sub(r'\s+', ' ', highlighted).strip()
@@ -207,8 +142,8 @@ def build_reminder_article(data: dict) -> str:
     lines.append("  - 游戏攻略")
     lines.append("  - 弹壳日历")
     lines.append("  - 每日待办")
-    lines.append('cover: "./cover.png"')
-    lines.append('cover_vertical: "./cover_vertical.png"')
+    lines.append('cover: "./dist/cover.png"')
+    lines.append('cover_vertical: "./dist/cover_vertical.png"')
     lines.append('author: "弹壳呱呱"')
     lines.append(f"date: {date_str}")
     lines.append(f"lastmod: {date_str}")
@@ -221,14 +156,14 @@ def build_reminder_article(data: dict) -> str:
     lines.append("")
     lines.append("![article-top](img://article-top){type=banner}")
     lines.append("")
-    lines.append(f"# 📅 {yy} 年 {month} 月 {day} 日弹壳每日事项清单")
+    lines.append(f"# {yy} 年 {month} 月 {day} 日弹壳每日事项清单")
     lines.append("")
     lines.append("各位特工大家早上好，我是呱呱！")
     lines.append("")
     lines.append(f"今天（{yy} 年 {month} 月 {day} 日）游戏内各玩法的最新待办与事项提醒如下：")
     lines.append("")
 
-    for idx, item in enumerate(items, 1):
+    for item in items:
         name = item.get("name", "")
         raw_status_text = item.get("statusText", "")
         days_remaining = item.get("daysRemaining", 9999)
@@ -238,11 +173,11 @@ def build_reminder_article(data: dict) -> str:
         status_text = highlight_urgent_status(status_text, days_remaining, is_redeem_day)
         note = item.get("digestNote")
         
-        # 单行展示：序号 + 玩法名称 + 状态文案（备注）
+        # 单行展示：自然无序列表 + 玩法名称 + 状态文案（备注）
         if note and note.strip():
-            lines.append(f"{idx}. **{name}**：{status_text}（{note.strip()}）")
+            lines.append(f"- {name}：{status_text}（{note.strip()}）")
         else:
-            lines.append(f"{idx}. **{name}**：{status_text}")
+            lines.append(f"- {name}：{status_text}")
 
     lines.append("")
     lines.append("---")
@@ -266,11 +201,19 @@ def auto_tag_file(file_path: Path):
             print(f"⚠️ 自动宏标注跳过: {e}")
 
 
-def generate_covers(out_dir: Path):
-    """使用全特工专属底图与固定文案生成封面"""
+def generate_covers(out_dir: Path, target_date_obj: datetime.date = None):
+    """使用全特工专属底图与带当天日期的文案生成封面"""
+    out_dir.mkdir(parents=True, exist_ok=True)
     ws = find_workspace_root()
     make_cover_script = ws / ".agents" / "skills" / "wechat-cover-generator" / "scripts" / "make_cover.py"
-    bg_img = ws / ".agents" / "skills" / "danke-daily-reminder-skill" / "assets" / "reminder_cover_bg.jpg"
+    bg_img = ws / ".agents" / "skills" / "danke-calendar-skill" / "assets" / "reminder_cover_bg.jpg"
+    if not bg_img.exists():
+        bg_img = Path(__file__).resolve().parent.parent / "assets" / "reminder_cover_bg.jpg"
+
+    if target_date_obj is None:
+        target_date_obj = datetime.date.today()
+
+    cover_text = f"弹壳特攻队\n提醒日历{target_date_obj.year}.{target_date_obj.month}.{target_date_obj.day}"
 
     if make_cover_script.exists() and bg_img.exists():
         try:
@@ -278,28 +221,35 @@ def generate_covers(out_dir: Path):
                 sys.executable,
                 str(make_cover_script),
                 "-i", str(bg_img),
-                "-t", "弹壳特攻队\n每日日历",
+                "-t", cover_text,
                 "-o", str(out_dir / "cover.png"),
                 "--style", "horizontal",
             ]
             subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            print(f"🖼️ 专属封面已自动生成: {out_dir / 'cover.png'}")
+            print(f"🖼️ 专属封面已自动生成: {out_dir / 'cover.png'} (文字: {cover_text})")
         except Exception as e:
-            print(f"⚠️ 封面生成异常: {e}")
+            raise RuntimeError("封面生成失败") from e
+    else:
+        raise FileNotFoundError("缺少封面脚本或背景素材")
 
 
 def main():
     parser = argparse.ArgumentParser(description="自动生成《弹壳特攻队》每日玩法待办与倒计时日历文章")
     parser.add_argument("--date", help="指定生成日期 (YYYY-MM-DD)，默认为当天", default=datetime.date.today().strftime("%Y-%m-%d"))
-    parser.add_argument("--api-base", help="danke-core API 地址", default="http://localhost:3000")
+    parser.add_argument("--api-base", help="danke-core API 地址", default=os.environ.get("DANKE_API_BASE_URL", "http://localhost:3000"))
     parser.add_argument("--output-dir", help="自定义输出目录")
+
+    parser.add_argument("--digest-file", type=Path, help="MCP get_reminder_rules 返回的 JSON 文件")
 
     args = parser.parse_args()
     target_date_str = args.date
     target_date_obj = datetime.datetime.strptime(target_date_str, "%Y-%m-%d").date()
 
     print(f"📡 正在拉取 {target_date_str} 提醒规则数据...")
-    digest_data = fetch_daily_digest(target_date_str, api_base=args.api_base)
+    if args.digest_file:
+        digest_data = validate_digest(json.loads(args.digest_file.read_text(encoding="utf-8-sig")), target_date_str)
+    else:
+        digest_data = fetch_daily_digest(target_date_str, api_base=args.api_base)
 
     items = digest_data.get("items") or digest_data.get("reminders") or []
     total_rules = len(items)
@@ -323,7 +273,7 @@ def main():
     print(f"💾 文章已写入: {out_file}")
 
     # 自动生成专属封面
-    generate_covers(out_dir)
+    generate_covers(out_dir / "dist", target_date_obj)
 
     # 自动宏标注
     auto_tag_file(out_file)

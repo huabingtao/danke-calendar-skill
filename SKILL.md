@@ -1,9 +1,9 @@
 ---
-name: danke-daily-reminder-skill
-description: "专为《弹壳特攻队》每日活动待办与倒计时日历打造的专属创作技能。100%严格依据后台/danke-mcp-server查询出来的规则事实(statusText + digestNote)生成极简清单（单行展示），并在文末精选推荐3篇往期攻略以纯文字居中链接展示，封面统一使用全特工专属底图并渲染「弹壳特攻队 每日日历」。输出路径规范为 project/danke-creator/my-articles-md/提醒/YY.M.D/YY.M.D.md。当用户说'生成弹壳日历'、'生成每日提醒'、'写日历文章'、'今天的日历'、'daily reminder'、'生成今日待办'时触发。"
+name: danke-calendar-skill
+description: "专为《弹壳特攻队》每日活动待办与倒计时日历打造的专属创作技能。100%严格依据后台/danke-mcp-server查询出来的规则事实(statusText + digestNote)生成极简清单（单行展示），并在文末精选推荐3篇往期攻略以纯文字居中链接展示，封面统一使用全特工专属底图并渲染「弹壳特攻队 提醒日历YYYY.M.D」。输出路径规范为 project/danke-creator/my-articles-md/提醒/YY.M.D/YY.M.D.md。当用户说'生成弹壳日历'、'生成每日提醒'、'写日历文章'、'今天的日历'、'calendar'、'danke calendar'、'daily reminder'、'生成今日待办'时触发。"
 ---
 
-# danke-daily-reminder-skill
+# danke-calendar-skill
 
 专为《弹壳特攻队》自媒体运营打造的**每日玩法待办与倒计时日历**内容创作 Skill。
 全自动对接数据中心（`danke-mcp-server` / `danke-core`），动态计算当天全部活动规则状态，按统一规范生成客观、真实、无 AI 编造内容的极简每日待办日历初稿。
@@ -17,8 +17,10 @@ description: "专为《弹壳特攻队》每日活动待办与倒计时日历打
 - "写一篇每日日历公众号"
 - "生成今日待办事项"
 - "查询今天有什么活动日历并生成文章"
+- "calendar"
+- "danke calendar"
 - "daily reminder"
-- "/danke-daily-reminder-skill"
+- "/danke-calendar-skill"
 
 ---
 
@@ -28,9 +30,9 @@ description: "专为《弹壳特攻队》每日活动待办与倒计时日历打
    - 文章正文的各规则描述与备注，**必须 100% 严格使用后台/API 查询返回的实际文案与备注（即 `statusText` 与 `digestNote`）**；
    - **严禁 AI 擅自扩写、推测或编造任何非后台配置的打卡建议/游戏攻略！**
 2. **【单行紧凑清单格式】**：
-   - 简短开篇后，直接使用数字序号列出玩法名称、倒计时状态与备注（单行紧凑括号包裹），**不使用 `>` 引用块**，例如：
+   - 简短开篇后，使用自然的无序列表列出玩法名称、倒计时状态与备注。列表项保持单行，不使用数字序号、加粗小标题或 `>` 引用块，例如：
      ```markdown
-     1. **神秘商人**：离本轮【神秘商人】结束还剩 3 天（记得助力后及时购买）
+     - 神秘商人：离本轮【神秘商人】结束还剩 3 天（记得助力后及时购买）
      ```
 3. **【Frontmatter 元数据纯自动驱动（废弃正文宏占位符）】**：
    - 往期推荐与二维码完全由 Frontmatter 中的 `recommendations:` 与 `qrcode_image:` 元数据声明；
@@ -79,15 +81,15 @@ recommendations:
 ```markdown
 ![article-top](img://article-top){type=banner}
 
-# 📅 [M] 月 [D] 日弹壳每日事项清单
+# [M] 月 [D] 日弹壳每日事项清单
 
 各位特工大家早上好，我是呱呱！
 
 今天（[M] 月 [D] 日）游戏内各玩法的最新待办与事项提醒如下：
 
-1. **[玩法名称1]**：[statusText1]（[digestNote1]）
-2. **[玩法名称2]**：[statusText2]
-3. **[玩法名称3]**：[statusText3]（[digestNote3]）
+- [玩法名称1]：[statusText1]（[digestNote1]）
+- [玩法名称2]：[statusText2]
+- [玩法名称3]：[statusText3]（[digestNote3]）
 
 ---
 
@@ -102,8 +104,12 @@ recommendations:
 
 ```bash
 # 生成今日日历清单（自动拉取数据、制作封面、生成文章并宏标注）
-python3 .agents/skills/danke-daily-reminder-skill/scripts/generate_reminder.py
+python3 .agents/skills/danke-calendar-skill/scripts/generate_reminder.py
 
 # 指定日期生成
-python3 .agents/skills/danke-daily-reminder-skill/scripts/generate_reminder.py --date 2026-09-06
+python3 .agents/skills/danke-calendar-skill/scripts/generate_reminder.py --date 2026-09-06
 ```
+
+## Codex 规则来源与输出
+
+先调用 danke MCP 的 get_reminder_rules（date=目标日期，onlyDigest=true），将 text 中的 JSON 保存到文章 dist/digest.json，再传入 generate_reminder.py --date YYYY-MM-DD --digest-file <文章/dist/digest.json>。只有 MCP 返回成功且日期正确才能生成。接口不可用时停止，不使用简化 SQLite 算法推算。封面及排版、切图衍生产物均输出到文章 dist/；列表保留颜色提示但不使用加粗。
